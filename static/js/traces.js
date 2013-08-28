@@ -2,11 +2,15 @@ var traces = {};
 var dynamics = {};
 var activeTrace;
 
+var startProgress = function(type) {
+    $("#" + type + "-progress").show();
+    $("#" + type + "-progress-done").hide();
+};
 var finishProgress = function(type) {
-    $("#" + type + "-progress progress").hide();
-    $("#" + type + "-progress").append("Done.");
+    $("#" + type + "-progress").hide();
+    $("#" + type + "-progress-done").show();
     setTimeout(function() {
-        $("#" + type + "-progress").hide();
+        $("#" + type + "-progress-done").hide();
     }, 8);
 };
 
@@ -33,6 +37,7 @@ var processTrace = function(selectedTrace, data) {
     var lastLoggedProgress = 0;
     var progressElement = $("#analysis-progress progress");
     dynamics = {};
+    startProgress("analysis");
     updateProgress(progressElement, 0);
     _.each(data.split("\n"), function(line, i) {
         if(line) {
