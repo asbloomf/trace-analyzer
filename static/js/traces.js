@@ -1,17 +1,43 @@
 var traces = {};
 var dynamics = {};
 var activeTrace;
+var isLoading = false;
+var cancelLoading = false;
+var loadingUrl;
+
+var cancelLoad = function() {
+    cancelLoading = true;
+    delete traces[loadingUrl];
+};
+
+var eachCallback = function(arr, iterator, callback, context) {
+    var cnt = 0;
+    function work() {
+        var icnt = 1000;
+        var iteratorRetVal = true;
+        while(iteratorRetVal && --icnt >= 0 && cnt < arr.length) {
+            iteratorRetVal = iterator.call(context, arr[cnt], cnt);
+            cnt += 1;
+        }
+        if(iteratorRetVal && cnt < arr.length) {
+            setTimeout(work, 1);
+        } else {
+            callback.call(context);
+        }
+    }
+    setTimeout(work, 1);
+};
 
 var startProgress = function(type) {
     $("#" + type + "-progress").show();
-    $("#" + type + "-progress-done").hide();
+    //$("#" + type + "-progress-done").hide();
 };
 var finishProgress = function(type) {
     $("#" + type + "-progress").hide();
-    $("#" + type + "-progress-done").show();
+    /*$("#" + type + "-progress-done").show();
     setTimeout(function() {
         $("#" + type + "-progress-done").hide();
-    }, 8);
+    }, 1000);*/
 };
 
 var timestampHoverHandler = {
@@ -33,16 +59,18 @@ var updateProgress = function(element, progress) {
 };
 
 var processTrace = function(selectedTrace, data) {
+    isLoading = true;
     var count = 0;
     var lastLoggedProgress = 0;
     var progressElement = $("#analysis-progress progress");
     dynamics = {};
     startProgress("analysis");
     updateProgress(progressElement, 0);
-    _.each(data.split("\n"), function(line, i) {
+    eachCallback(data.split("\n"), function(line, i) {
+        if(cancelLoading) return false;
         if(line) {
             try {
-                handleMessage(selectedTrace, JSON.parse(line));
+                handleMessage(selectedTrace, JSON.parse(line)); // each line has a name, value, and timestamp
             } catch(e) {
                 console.log("Unable to parse " + line + " (" + e + ")");
             }
@@ -53,10 +81,15 @@ var processTrace = function(selectedTrace, data) {
                 lastLoggedProgress = progress;
             }
         }
+        return true;
+    }, function() {
+        if(!cancelLoading) {
+            activateTrace(selectedTrace);
+            finishProgress("analysis");
+        }
+        isLoading = false;
+        cancelLoading = false;
     });
-
-    activateTrace(selectedTrace);
-    finishProgress("analysis");
 };
 
 var activateTrace = function(traceUrl) {
@@ -73,15 +106,20 @@ var activateTrace = function(traceUrl) {
 };
 
 var loadTrace = function(traceUrl) {
+    if(isLoading) {
+        cancelLoad();
+        setTimeout(function() { loadTrace(traceUrl); }, 100);
+    }
     if(_.has(traces, traceUrl)) {
         activateTrace(traceUrl);
     } else {
+        loadingUrl = traceUrl;
         traces[traceUrl] = {url: traceUrl, records: []};
         $.ajax({
             xhr: function() {
                 var xhr = window.ActiveXObject ?
                         new ActiveXObject("Microsoft.XMLHTTP") : new XMLHttpRequest();
-
+                startProgress("download");
                 // TODO this is a shim for IE8
                 if (xhr.addEventListener) {
                     xhr.addEventListener("progress", function(evt){
